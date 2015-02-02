@@ -14,7 +14,7 @@ import sys
 # The string below should contain the path to your installation of AirCONICS
 # Example: AirCONICSpath = "C:/Users/as/Documents/airconicsv021/"
 
-AirCONICSpath = "/Users/bruce/Desktop/airconicsv02122/"
+AirCONICSpath = "/Users/bruce/github/foil-generator/airconicsv02122/"
 
 # TWO:
 # The string below should contain the path to your library of Selig-formatted
@@ -22,8 +22,7 @@ AirCONICSpath = "/Users/bruce/Desktop/airconicsv02122/"
 # this should be the path to the coord_seligFmt folder included.
 
 # Example: SeligPath = "C:/Users/as/Documents/airconicsv021/coord_seligFmt/"
-SeligPath = "/Users/bruce/Desktop/airconicsv021/coord_seligFmt/"
-BrucePath = "/Users/bruce/Desktop/airconicsv021/coord_seligFmt/"
+SeligPath = "/Users/bruce/github/foil-generator/airconicsv021/coord_seligFmt/"
 
 # THREE:
 # Set this to
