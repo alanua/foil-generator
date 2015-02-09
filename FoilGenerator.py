@@ -13,16 +13,38 @@ class CurveSplit:
 
     def GetPoints(self,curve):
         curveDomain = rs.CurveDomain(curve)
+
+        # Get the minimim point
         minDomainValue = curveDomain[0]
+        minPoint = rs.EvaluateCurve(curve,minDomainValue)
+
+        # get the maximum point
         maxDomainValue = curveDomain[1]
+        maxPoint = rs.EvaluateCurve(curve,maxDomainValue)
+
+        yLength = abs(minPoint[1] - maxPoint[1])
 
         points = []
 
         for i in range (0,self.numberOfDivisions+1):
-            param = (maxDomainValue-minDomainValue)/self.numberOfDivisions * i
-            pt = rs.EvaluateCurve(curve,param)
-            points.append(pt)
-            #rs.AddPoint(pt)
+            print minPoint
+            startingPoint = (minPoint[0],(yLength/self.numberOfDivisions)*i,minPoint[2])
+            print startingPoint
+            endPoint = (100,startingPoint[1],startingPoint[2])
+            tmpLine = rs.AddLine(startingPoint,endPoint)
+
+
+            # get the point where the new line and the traling edge curve is
+            intersection_list = rs.CurveCurveIntersection(curve, tmpLine)
+            if intersection_list is None:
+                print "Selected curves do not intersect."
+                return
+            for intersection in intersection_list:
+                if intersection[0] == 1:
+                    print intersection[1]
+                    #rs.AddPoint(intersection[1])
+                points.append(intersection[1])
+            rs.DeleteObject(tmpLine)
         return points
 
     def dihedralFunction(self,Epsilon):
@@ -31,9 +53,9 @@ class CurveSplit:
         # With the dihedral angles set as D1 and D2
 
         BaseDihedral = 0
-        Dihedral = -20
-        TransitionStart = 0.0
-        TransitionEnd = 0.1
+        Dihedral = -0
+        TransitionStart = 0.5
+        TransitionEnd = 0.55
 
         if Epsilon < TransitionStart:
             return BaseDihedral
@@ -53,6 +75,40 @@ class CurveSplit:
         else:
             return BaseTwist + ((Epsilon - WashoutStart)/(1 - WashoutStart))*(Washout-BaseTwist)
 
+    def generateLeadingEdgeWithDihedral(self,originalLeadingEdgePoints, numberOfSegments):
+        # Due to the fixed rotation that we have to draw in we can get the
+        # length by subtracting coordinate values at each tip.
+        # A more generic solution would be to get all 3 axies and use the max length
+        # insted of hardcoding to the Y axis
+
+        n = len(originalLeadingEdgePoints)-1
+
+        YLength = originalLeadingEdgePoints[n][1] - originalLeadingEdgePoints[0][1]
+        SegmentLength = YLength/numberOfSegments
+        # Start the leading edge at the origin
+        XLE = [0.0]
+        YLE = [0.0]
+        ZLE = [0.0]
+
+        LEPoints = []
+        list.append(LEPoints,([0, 0, 0]))
+        previousDepth = 0.0
+        pointZ = 0.0
+
+        for i in range(1,numberOfSegments+1):
+            TiltAngle = self.dihedralFunction(((i-1)/float(numberOfSegments)+i/float(numberOfSegments))/2)
+
+            DeltaY = (originalLeadingEdgePoints[i][1] - originalLeadingEdgePoints[i-1][1])*math.cos(TiltAngle*math.pi/180.0)
+            DeltaZ = (originalLeadingEdgePoints[i][1] - originalLeadingEdgePoints[i-1][1])*math.tan(TiltAngle*math.pi/180.0)
+
+            pointX = originalLeadingEdgePoints[i-1][0]
+            pointY = originalLeadingEdgePoints[i-1][1]
+            pointZ = originalLeadingEdgePoints[i-1][2] + DeltaZ + previousDepth
+            previousDepth = pointZ
+            list.append(LEPoints,(pointX, pointY, pointZ))
+
+        print LEPoints
+        return LEPoints
 
     def _GenerateLeadingEdge(self):
         # Epsilon coordinate attached to leading edge defines sweep
@@ -67,6 +123,7 @@ class CurveSplit:
 
         LEPoints = []
         list.append(LEPoints,rs.AddPoint(XLE[0], YLE[0], ZLE[0]))
+
 
         for i in range(1,self.SegmentNo+1):
             # We are essentially reconstructing a curve from known slopes at
@@ -114,13 +171,10 @@ class CurveSplit:
             rs.DeleteObject(tmpLine)
         return TrailingEdgePoints
 
-    def AerofoilAtPoint(self,numberOfSegments, epsilon,leadingEdgePoint,trailingEdgePoint):
+    def AerofoilAtPoint(self,numberOfSegments, epsilon,leadingEdgePoint,chordLength):
 
         # Create a 3d point
         #LEPoint = (leadingEdgePoint[0],leadingEdgePoint[1],leadingEdgePoint[2])
-
-        # Determine the length of the chord to generate
-        ChordLength = abs(leadingEdgePoint[0] - trailingEdgePoint[0])
 
         # Determine the twist for any washout
         Twist = self.washoutFunction(epsilon)
@@ -132,10 +186,12 @@ class CurveSplit:
         Angle = self.dihedralFunction(epsilon)
 
         # Create a 3d point
+        #LEPoint = [0,0,0]
+
         LEPoint = (leadingEdgePoint[0],leadingEdgePoint[1],leadingEdgePoint[2])
 
         # Instantiate class to set up a generic airfoil with these basic parameters
-        Af = primitives.Airfoil(LEPoint,ChordLength, Angle , Twist , airconics_setup.SeligPath)
+        Af = primitives.Airfoil(LEPoint,chordLength, Angle , Twist , airconics_setup.SeligPath)
 
         # Name of the file containing the airfoil coordinates + smoothing
         AirfoilSeligName = 'dae11'
@@ -145,7 +201,7 @@ class CurveSplit:
         #AfCurve,Chrd = primitives.Airfoil.AddAirfoilFromSeligFile(Af, AirfoilSeligName, SmoothingPasses)
         return primitives.Airfoil.AddAirfoilFromSeligFile(Af, AirfoilSeligName, SmoothingPasses)
 
-NumberOfSegments = 10
+NumberOfSegments = 20
 
 leCurve = rs.GetObject("Select the leading edge curve")
 if leCurve is not None:
@@ -159,6 +215,7 @@ if leCurve is not None:
             tePoints = obj.GetPointsOnSecondCurve(teCurve,lePoints)
 
             # Adjust the leading edge point locaiton based on the desired dihedral
+            newLEPoints = obj.generateLeadingEdgeWithDihedral(lePoints, NumberOfSegments)
 
 
     Sections = []
@@ -166,7 +223,13 @@ if leCurve is not None:
     for i in range (0,len(lePoints)):
         epsilon = i/len(lePoints)
         print "Epsilon %.2f" % (epsilon)
-        Airfoil, ChordLine = obj.AerofoilAtPoint(NumberOfSegments, epsilon,lePoints[i],tePoints[i])
+
+        # Determine the length of the chord to generate
+        chordLength = abs(lePoints[i][0] - tePoints[i][0])
+
+        Airfoil, ChordLine = obj.AerofoilAtPoint(NumberOfSegments, epsilon, lePoints[i],chordLength)
+
+        #Airfoil, ChordLine = obj.AerofoilAtPoint(NumberOfSegments, epsilon, newLEPoints[i],chordLength)
         rs.DeleteObjects(ChordLine)
         list.append(Sections,Airfoil)
         #lss = rs.AddLoftSrf(Sections,)
